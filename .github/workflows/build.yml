@@ -1,0 +1,56 @@
+name: Build TrackWeight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-13  # macOS 13 Ventura，支持 arm64 模拟
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build .app using Xcode
+        run: |
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+
+          # 创建关闭沙盒的 entitlements
+          echo '<?xml version="1.0" encoding="UTF-8"?>' > TrackWeight.entitlements
+          echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"' >> TrackWeight.entitlements
+          echo '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> TrackWeight.entitlements
+          echo '<plist version="1.0"><dict>' >> TrackWeight.entitlements
+          echo '  <key>com.apple.security.app-sandbox</key>' >> TrackWeight.entitlements
+          echo '  <false/>' >> TrackWeight.entitlements
+          echo '</dict></plist>' >> TrackWeight.entitlements
+
+          # 构建
+          xcodebuild \
+            -project TrackWeight.xcodeproj \
+            -scheme TrackWeight \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            OTHER_CODE_SIGN_FLAGS="--entitlements=TrackWeight.entitlements" \
+            -IDEPackageSupportDisableManifestSandbox=YES \
+            -IDEPackageSupportDisablePluginExecutionSandbox=YES
+
+      - name: Archive .app
+        run: |
+          mkdir dist
+          cp -R build/Build/Products/Release/TrackWeight.app dist/
+          cd dist
+          zip -r TrackWeight.app.zip TrackWeight.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrackWeight-app
+          path: dist/TrackWeight.app.zip
